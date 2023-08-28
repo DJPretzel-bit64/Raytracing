@@ -6,86 +6,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Raytracing {
-    Vec3 rayColour(Ray r, HittableList world) {
-        HitRecord rec = new HitRecord();
-        if(world.hit(r, new Interval(0, Double.POSITIVE_INFINITY), rec)) {
-            return Vec3.times(Vec3.plus(rec.normal, new Vec3(1.0, 1.0, 1.0)), 0.5);
-        }
-
-        Vec3 unitDirection = Vec3.unitVector(r.direction());
-        double a = 0.5*(unitDirection.y() + 1.0);
-        return Vec3.plus(Vec3.times(new Vec3(1.0, 1.0, 1.0), 1.0 - a), Vec3.times(new Vec3(0.5, 0.7, 1.0), a));
-    }
-
-    int rgb(Vec3 colour) {
-        int r = (int)(colour.x() * 255);
-        int g = (int)(colour.y() * 255);
-        int b = (int)(colour.z() * 255);
-        int rgb = r;
-        rgb = (rgb << 8) + g;
-        rgb = (rgb << 8) + b;
-        return rgb;
-    }
-
     public Raytracing() {
         System.out.println("Starting...");
 
-        // Image
-
-        double aspectRatio = 16 / 9.0;
-        int width = 400;
-
-        // Calculate the image height, and ensure that it's at least 1
-        int height = Math.max((int) (width / aspectRatio), 1);
-
-        // World
-
         HittableList world = new HittableList();
+
         world.add(new Sphere(new Vec3(0, 0, -1), 0.5));
         world.add(new Sphere(new Vec3(0, -100.5, -1), 100));
 
-        // Camera
+        Camera cam = new Camera();
 
-        double focalLength = 1.0;
-        double viewportHeight = 2.0;
-        double viewportWidth = viewportHeight * (width / (double)(height));
-        Vec3 cameraCenter = new Vec3(0, 0, 0);
+        cam.aspectRatio = 16.0 / 9.0;
+        cam.width = 400;
 
-        // Calculate the vectors across the horizontal and down the vertical viewport edges.
-        Vec3 viewportU = new Vec3(viewportWidth, 0, 0);
-        Vec3 viewportV = new Vec3(0, -viewportHeight, 0);
-
-        // Calculate the horizontal and vertical delta vectors from pixel to pixel.
-        Vec3 pixelDeltaU = Vec3.divide(viewportU, width);
-        Vec3 pixelDeltaV = Vec3.divide(viewportV, height);
-
-        // Calculate the location of the upper left pixel.
-        Vec3 viewportUpperLeft = Vec3.minus(Vec3.minus(Vec3.minus(cameraCenter, new Vec3(0, 0, focalLength)), Vec3.divide(viewportU, 2)), Vec3.divide(viewportV, 2));
-        Vec3 pixel00_loc = Vec3.plus(viewportUpperLeft, Vec3.times(Vec3.plus(pixelDeltaU, pixelDeltaV), 0.5));
-
-        //Render
-
-        BufferedImage render = new BufferedImage(width, height, BufferedImage.TYPE_3BYTE_BGR);
-        File output = new File("Render.png");
-
-
-        for(int j = 0; j < height; j++) {
-            for(int i = 0; i < width; i++) {
-                Vec3 pixelCenter = Vec3.plus(pixel00_loc, Vec3.plus((Vec3.times(pixelDeltaU, i)), Vec3.times(pixelDeltaV, j)));
-                Vec3 rayDirection = Vec3.minus(pixelCenter, cameraCenter);
-                Ray r = new Ray(cameraCenter, rayDirection);
-
-                Vec3 pixelColour = rayColour(r, world);
-                render.setRGB(i, j, rgb(pixelColour));
-            }
-        }
-
-
-        try {
-            ImageIO.write(render, "PNG", output);
-        } catch(IOException e) {
-            System.out.println("Something went very wrong...");
-        }
+        cam.render(world);
 
         System.out.println("Done");
     }
@@ -302,4 +236,85 @@ class Interval {
 
     static final Interval empty = new Interval(Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY);
     static final Interval universe = new Interval(Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
+}
+
+class Camera {
+    public double aspectRatio = 1.0;
+    public int width = 100;
+
+    public void render(HittableList world) {
+        initialize();
+
+        BufferedImage render = new BufferedImage(this.width, this.height, BufferedImage.TYPE_3BYTE_BGR);
+        File output = new File("Render.png");
+
+
+        for(int j = 0; j < this.height; j++) {
+            for(int i = 0; i < this.width; i++) {
+                Vec3 pixelCenter = Vec3.plus(this.pixel00_loc, Vec3.plus((Vec3.times(this.pixelDeltaU, i)), Vec3.times(this.pixelDeltaV, j)));
+                Vec3 rayDirection = Vec3.minus(pixelCenter, this.center);
+                Ray r = new Ray(this.center, rayDirection);
+
+                Vec3 pixelColour = rayColour(r, world);
+                render.setRGB(i, j, rgb(pixelColour));
+            }
+        }
+
+
+        try {
+            ImageIO.write(render, "PNG", output);
+        } catch(IOException e) {
+            System.out.println("Something went very wrong...");
+        }
+    }
+
+    private int height;
+    private Vec3 center;
+    private Vec3 pixel00_loc;
+    private Vec3 pixelDeltaU;
+    private Vec3 pixelDeltaV;
+
+    private void initialize() {
+        this.height = (int) Math.max(this.width / this.aspectRatio, 1);
+
+        this.center = new Vec3();
+
+        // Determine viewport dimensions.
+        double focalLength = 1.0;
+        double viewportHeight = 2.0;
+        double viewportWidth = viewportHeight * ((double) (this.width) / (double) (this.height));
+
+        // Calculate the vectors across the horizontal and down the vertical viewport edges.
+        Vec3 viewportU = new Vec3(viewportWidth, 0, 0);
+        Vec3 viewportV = new Vec3(0, -viewportHeight, 0);
+
+        // Calculate the horizontal and vertical delta vectors from pixel to pixel.
+        this.pixelDeltaU = Vec3.divide(viewportU, this.width);
+        this.pixelDeltaV = Vec3.divide(viewportV, this.height);
+
+        // Calculate the location of the upper left pixel.
+        Vec3 viewportUpperLeft = Vec3.minus(Vec3.minus(Vec3.minus(this.center, new Vec3(0, 0, focalLength)), Vec3.divide(viewportU, 2)), Vec3.divide(viewportV, 2));
+        this.pixel00_loc = Vec3.plus(viewportUpperLeft, Vec3.times(Vec3.plus(this.pixelDeltaU, this.pixelDeltaV), 0.5));
+    }
+
+    private Vec3 rayColour(Ray r, HittableList world) {
+        HitRecord rec = new HitRecord();
+        if(world.hit(r, new Interval(0, Double.POSITIVE_INFINITY), rec)) {
+            return Vec3.times(Vec3.plus(rec.normal, new Vec3(1.0, 1.0, 1.0)), 0.5);
+        }
+
+        Vec3 unitDirection = Vec3.unitVector(r.direction());
+        double a = 0.5*(unitDirection.y() + 1.0);
+        return Vec3.plus(Vec3.times(new Vec3(1.0, 1.0, 1.0), 1.0 - a), Vec3.times(new Vec3(0.5, 0.7, 1.0), a));
+    }
+
+    private int rgb(Vec3 colour) {
+        int r = (int)(colour.x() * 255);
+        int g = (int)(colour.y() * 255);
+        int b = (int)(colour.z() * 255);
+        int rgb = r;
+        rgb = (rgb << 8) + g;
+        rgb = (rgb << 8) + b;
+        return rgb;
+    }
 }
