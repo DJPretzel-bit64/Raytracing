@@ -18,6 +18,7 @@ public class Raytracing {
 
         cam.aspectRatio = 16.0 / 9.0;
         cam.width = 400;
+        cam.samplesPerPixel = 100;
 
         cam.render(world);
 
@@ -234,29 +235,38 @@ class Interval {
         return min < x && x < max;
     }
 
-    static final Interval empty = new Interval(Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY);
-    static final Interval universe = new Interval(Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
+    public double clamp(double x) {
+        if(x < min) return min;
+        if(x > max) return max;
+        return x;
+    }
+
+    public static final Interval empty = new Interval(Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY);
+    public static final Interval universe = new Interval(Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
 }
 
 class Camera {
     public double aspectRatio = 1.0;
     public int width = 100;
+    public int samplesPerPixel = 10;
+
+    BufferedImage render;
 
     public void render(HittableList world) {
         initialize();
 
-        BufferedImage render = new BufferedImage(this.width, this.height, BufferedImage.TYPE_3BYTE_BGR);
+        this.render = new BufferedImage(this.width, this.height, BufferedImage.TYPE_3BYTE_BGR);
         File output = new File("Render.png");
 
 
         for(int j = 0; j < this.height; j++) {
             for(int i = 0; i < this.width; i++) {
-                Vec3 pixelCenter = Vec3.plus(this.pixel00_loc, Vec3.plus((Vec3.times(this.pixelDeltaU, i)), Vec3.times(this.pixelDeltaV, j)));
-                Vec3 rayDirection = Vec3.minus(pixelCenter, this.center);
-                Ray r = new Ray(this.center, rayDirection);
-
-                Vec3 pixelColour = rayColour(r, world);
-                render.setRGB(i, j, rgb(pixelColour));
+                Vec3 pixelColour = new Vec3();
+                for(int sample = 0; sample < samplesPerPixel; sample++) {
+                    Ray r = getRay(i, j);
+                    pixelColour.plusEquals(rayColour(r, world));
+                }
+                writeColour(pixelColour, samplesPerPixel, i, j);
             }
         }
 
@@ -308,6 +318,22 @@ class Camera {
         return Vec3.plus(Vec3.times(new Vec3(1.0, 1.0, 1.0), 1.0 - a), Vec3.times(new Vec3(0.5, 0.7, 1.0), a));
     }
 
+    private Ray getRay(int i, int j) {
+        Vec3 pixelCenter = Vec3.plus(pixel00_loc, Vec3.plus( Vec3.times(pixelDeltaU, i), Vec3.times(pixelDeltaV, j)));
+        Vec3 pixelSample = Vec3.plus(pixelCenter, pixelSampleSquare());
+
+        Vec3 rayOrigin = this.center;
+        Vec3 rayDirection = Vec3.minus(pixelSample, rayOrigin);
+
+        return new Ray(rayOrigin, rayDirection);
+    }
+
+    private Vec3 pixelSampleSquare() {
+        double px = -0.5 + Math.random();
+        double py = -0.5 + Math.random();
+        return Vec3.plus(Vec3.times(pixelDeltaU, px), Vec3.times(pixelDeltaV, py));
+    }
+
     private int rgb(Vec3 colour) {
         int r = (int)(colour.x() * 255);
         int g = (int)(colour.y() * 255);
@@ -316,5 +342,19 @@ class Camera {
         rgb = (rgb << 8) + g;
         rgb = (rgb << 8) + b;
         return rgb;
+    }
+
+    private void writeColour(Vec3 colour, int samplesPerPixel, int i, int j) {
+        double r = colour.x();
+        double g = colour.y();
+        double b = colour.z();
+
+        double scale = 1.0 / samplesPerPixel;
+        r *= scale;
+        g *= scale;
+        b *= scale;
+        final Interval intensity = new Interval(0.000, 0.999);
+
+        this.render.setRGB(i, j, rgb(new Vec3(intensity.clamp(r), intensity.clamp(g), intensity.clamp(b))));
     }
 }
